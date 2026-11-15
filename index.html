@@ -750,16 +750,28 @@ function drawCreature(species,x,y,heading,size,color){
 function drawAnimal(){
   var a=st.animal;
   if(!a)return;
-  var s=SP[a.sp],z=s.size,heading=a.heading||0,dx=Math.cos(heading),dy=Math.sin(heading),count=s.count;
-  for(var i=count-1;i>=0;i--){
-    var row=Math.ceil(i/2),side=i%2===0?1:-1,spacing=z*1.65;
-    var x=a.x-dx*row*spacing-dy*side*row*z*1.15;
-    var y=a.y-dy*row*spacing+dx*side*row*z*1.15;
-    drawCreature(a.sp,x,y,heading,z*(i===0?1:.76),i===0?s.color:'#806f5d');
+  var s=SP[a.sp],z=s.size,count=s.count,retreating=a.state==='retreating',heading=a.heading||0;
+  var dx=Math.cos(heading),dy=Math.sin(heading),labelX=a.x,labelY=a.y+z+18;
+  if(retreating){
+    var side=sideOf(a.x,a.y),nx=side==='west'?-1:side==='east'?1:0,ny=side==='north'?-1:side==='south'?1:0;
+    var tx=-ny,ty=nx;
+    heading=Math.atan2(ny,nx);
+    labelX+=nx*z*3;labelY=a.y+ny*z*3;
+    for(var i=0;i<count;i++){
+      var offset=(i-(count-1)/2)*z*1.7;
+      drawCreature(a.sp,a.x+nx*z*2.1+tx*offset,a.y+ny*z*2.1+ty*offset,heading,z*(i===0?1:.76),i===0?s.color:'#806f5d');
+    }
+  }else{
+    for(var j=count-1;j>=0;j--){
+      var row=Math.ceil(j/2),groupSide=j%2===0?1:-1,spacing=z*1.65;
+      var x=a.x-dx*row*spacing-dy*groupSide*row*z*1.15;
+      var y=a.y-dy*row*spacing+dx*groupSide*row*z*1.15;
+      drawCreature(a.sp,x,y,heading,z*(j===0?1:.76),j===0?s.color:'#806f5d');
+    }
   }
   var d=distM(a.x,a.y);
   ctx.font='500 11px '+BODY;ctx.textAlign='center';
-  halo(s.name+' group · '+count+' · '+Math.round(d)+' m'+(a.state==='retreating'?' · retreating':a.lingerUntil&&a.state==='approaching'?' · lingering':''),a.x,a.y+z+18);
+  halo(s.name+' group · '+count+' · '+Math.round(d)+' m'+(retreating?' · retreating':a.lingerUntil&&a.state==='approaching'?' · lingering':''),labelX,labelY);
 }
 function draw(){
   var fx=performance.now()/1000,F=FIELD;
