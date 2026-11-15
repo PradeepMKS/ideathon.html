@@ -1,0 +1,916 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Adaptive Farm Guard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  /* Layout: control-room grid. Map stage left, live status and farmer phone right, learning table and settings below. */
+  --bg:#eef1f0;--surface:#fbfcfb;--surface2:#f1f4f3;--line:#cfd7d4;--fg:#16211f;--muted:#55655f;
+  --accent:#0f6b73;--accent-ink:#ffffff;--warn:#b26a00;--warn-bg:#fcefd3;--danger:#b3261e;--danger-bg:#fadedb;--ok:#2a7a3b;
+  --ground:#e4eae7;--z1:rgba(15,107,115,.07);--z2:rgba(178,106,0,.13);--z3:rgba(179,38,30,.17);
+  --crop:#d3e2c9;--crop-line:#b9cfae;--fence:#c27f00;--pole:#16211f;--bar:rgba(15,107,115,.22);
+  --font-head:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+  --font-body:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1517;--surface:#151e21;--surface2:#1b262a;--line:#2a373b;--fg:#e4ecea;--muted:#94a6a2;
+  --accent:#4fc3cc;--accent-ink:#06191b;--warn:#f0b04a;--warn-bg:#3a2b10;--danger:#ff8a80;--danger-bg:#3d1b18;--ok:#6fcf86;
+  --ground:#101a1c;--z1:rgba(79,195,204,.08);--z2:rgba(240,176,74,.11);--z3:rgba(255,138,128,.16);
+  --crop:#1f3326;--crop-line:#2a4332;--fence:#f0b04a;--pole:#e4ecea;--bar:rgba(79,195,204,.26);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1517;--surface:#151e21;--surface2:#1b262a;--line:#2a373b;--fg:#e4ecea;--muted:#94a6a2;
+  --accent:#4fc3cc;--accent-ink:#06191b;--warn:#f0b04a;--warn-bg:#3a2b10;--danger:#ff8a80;--danger-bg:#3d1b18;--ok:#6fcf86;
+  --ground:#101a1c;--z1:rgba(79,195,204,.08);--z2:rgba(240,176,74,.11);--z3:rgba(255,138,128,.16);
+  --crop:#1f3326;--crop-line:#2a4332;--fence:#f0b04a;--pole:#e4ecea;--bar:rgba(79,195,204,.26);color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--font-body);
+  padding-block:22px 44px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto}
+h1,h2{font-family:var(--font-head);font-weight:600;margin:0;letter-spacing:.01em;text-wrap:balance}
+h1{font-size:clamp(30px,5vw,42px);line-height:1.05}
+h2{font-size:21px;line-height:1.15;margin-bottom:10px}
+.lede{margin:6px 0 20px;color:var(--muted);max-width:62ch}
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"stage" "status" "phone" "workspace"}
+@media (min-width:980px){
+  .grid{grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr);
+    grid-template-areas:"stage status" "stage phone" "workspace workspace"}
+}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.stage{padding:14px}
+
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;background:var(--surface2);overflow:hidden}
+.seg label{position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:block;padding:6px 11px;font-weight:500;font-size:13px;color:var(--muted);border-right:1px solid var(--line)}
+.seg label:last-child span{border-right:0}
+.seg input:checked + span{background:var(--accent);color:var(--accent-ink)}
+.seg input:focus-visible + span{outline:2px solid var(--fg);outline-offset:-3px}
+.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface2);color:var(--fg);border-radius:8px;padding:7px 14px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+canvas{display:block;width:100%;height:auto;aspect-ratio:720/560;border-radius:8px;background:var(--ground);cursor:crosshair;touch-action:manipulation}
+.legend{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--muted);font-size:12.5px}
+.legend li{display:flex;align-items:center;gap:7px}
+.sw{width:14px;height:14px;border-radius:3px;border:1px solid var(--line)}
+.sw.z1{background:var(--z1)}.sw.z2{background:var(--z2)}.sw.z3{background:var(--z3)}
+.sw.pole{border-radius:50%;background:var(--pole)}
+.sw.fence{height:0;border:0;border-top:3px solid var(--fence);border-radius:0;width:18px}
+.stats{display:flex;flex-wrap:wrap;gap:6px 26px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line)}
+.stats div{display:flex;flex-direction:column}
+.stats dt{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stats dd{margin:0;font:500 20px/1.2 var(--font-mono);font-variant-numeric:tabular-nums}
+
+.levels{display:flex;gap:6px;margin-bottom:12px}
+.lvl{flex:1;text-align:center;padding:6px 4px;border:1px solid var(--line);border-radius:6px;font-weight:600;font-size:12.5px;color:var(--muted)}
+.lvl.on[data-l="1"]{background:var(--z1);border-color:var(--accent);color:var(--accent)}
+.lvl.on[data-l="2"]{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.lvl.on[data-l="3"]{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right;font-weight:500;overflow-wrap:anywhere}
+
+.phone ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.phone .scr{background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:6px 14px;min-height:150px}
+.msg{padding:10px 0;border-bottom:1px solid var(--line)}
+.msg:last-child{border-bottom:0}
+.mh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:3px}
+.mh b{font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:1px 8px;border-radius:99px}
+.msg.info .mh b{background:var(--z1);color:var(--accent)}
+.msg.warn .mh b{background:var(--warn-bg);color:var(--warn)}
+.msg.urgent .mh b{background:var(--danger-bg);color:var(--danger)}
+.mh time,.log time{font:12px var(--font-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.msg p{margin:0}
+.empty{margin:14px 0;color:var(--muted)}
+
+.set{display:grid;gap:14px}
+.field .lab{display:block;font-weight:600;margin-bottom:6px}
+.hint{margin:6px 0 0;color:var(--muted);font-size:12.5px}
+.reset-note{margin:8px 0;padding:10px 12px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-bg);color:var(--warn);font-weight:700}
+.checks{display:grid;gap:6px}
+.checks label{display:flex;gap:8px;align-items:center;cursor:pointer}
+.checks input{width:16px;height:16px;accent-color:var(--accent)}
+.rng{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;margin-bottom:8px}
+.rng input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.rng output{font:500 13px var(--font-mono)}
+
+.log ul{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
+.log li{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+.log li:last-child{border-bottom:0}
+.log li time{flex:none}
+
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line)}
+thead th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+tr.grp th{background:var(--surface2);font-size:12px;letter-spacing:.05em;color:var(--muted);text-transform:uppercase}
+tbody th[scope="row"]{font-weight:500}
+.cell{font-variant-numeric:tabular-nums;white-space:nowrap;
+  background:linear-gradient(90deg,var(--bar) calc(var(--p,0)*1%),transparent calc(var(--p,0)*1%))}
+.cell b{font:500 13px var(--font-mono);margin-right:8px}
+.cell small{color:var(--muted);font:11.5px var(--font-mono)}
+.cell.last{box-shadow:inset 0 0 0 2px var(--accent)}
+.cap{margin:0 0 10px;color:var(--muted);max-width:75ch}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:6px;max-width:80ch}
+.workspace{grid-area:workspace}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);margin:0 0 16px;padding:0 0 10px}
+.tab{font:inherit;font-weight:600;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 13px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.subtabs{margin-bottom:14px}
+.tab-panel:focus{outline:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Adaptive Farm Guard</h1>
+    <p class="lede">Four corner poles, three response levels and a solar electric fence. Click the map to place an animal, or press Send animal, and watch the system respond.</p>
+  </header>
+
+  <main class="grid">
+    <section class="card stage" style="grid-area:stage" aria-label="Field map">
+      <div class="bar">
+        <div class="seg" role="radiogroup" aria-label="Animal selection and behavior">
+          <label><input type="radio" name="sp" value="boar" checked><span>Wild boar</span></label>
+          <label><input type="radio" name="sp" value="monkey"><span>Monkey</span></label>
+          <label><input type="radio" name="sp" value="elephant"><span>Elephant</span></label>
+          <label><input type="radio" name="sp" value="deer"><span>Deer</span></label>
+          <label><input type="radio" name="sp" value="mixed"><span>Mixed</span></label>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="send" class="btn primary" type="button">Send animal</button>
+          <button id="reset" class="btn" type="button">Reset</button>
+        </div>
+      </div>
+      <canvas id="cv" role="img" aria-label="Top-down map of a sugarcane field with four corner poles, three response zones and an electric fence. The live status panel describes what is happening."></canvas>
+      <ul class="legend">
+        <li><span class="sw z1"></span>Level 1 zone</li>
+        <li><span class="sw z2"></span>Level 2 zone</li>
+        <li><span class="sw z3"></span>Level 3 zone</li>
+        <li><span class="sw pole"></span>Pole: PIR, IR camera, radar, speaker, light</li>
+        <li><span class="sw fence"></span>Solar electric fence, always on</li>
+      </ul>
+      <dl class="stats">
+        <div><dt>Raids</dt><dd id="sRaids">0</dd></div>
+        <div><dt>Turned back</dt><dd id="sBack">0</dd></div>
+        <div><dt>Reached fence</dt><dd id="sFence">0</dd></div>
+        <div><dt>Turn-back rate</dt><dd id="sRate">—</dd></div>
+        <div><dt>Alerts sent</dt><dd id="sAlerts">0</dd></div>
+      </dl>
+    </section>
+
+    <section class="card" style="grid-area:status" aria-labelledby="h-status">
+      <h2 id="h-status">Live status</h2>
+      <div class="levels" aria-hidden="true">
+        <span class="lvl" data-l="1">Level 1</span><span class="lvl" data-l="2">Level 2</span><span class="lvl" data-l="3">Level 3</span>
+      </div>
+      <dl class="kv">
+        <dt>Animal</dt><dd id="stAnimal">None in range</dd>
+        <dt>Distance to fence</dt><dd id="stDist">—</dd>
+        <dt>Owning pole</dt><dd id="stPole">—</dd>
+        <dt>Response</dt><dd id="stResp">Watching</dd>
+        <dt>Camera check</dt><dd id="stCheck">—</dd>
+      </dl>
+    </section>
+
+    <section class="card phone" style="grid-area:phone" aria-labelledby="h-phone">
+      <h2 id="h-phone">Farmer's phone</h2>
+      <div class="scr">
+        <p class="empty" id="phoneEmpty">No messages yet. A message is sent when an animal keeps advancing after a response or lingers in Level 2 or 3.</p>
+        <ul id="phone" aria-live="polite"></ul>
+      </div>
+    </section>
+
+    <section class="card workspace" aria-label="System information and controls">
+      <div class="tabs" role="tablist" aria-label="System options">
+        <button class="tab" id="tab-settings" type="button" role="tab" aria-selected="true" aria-controls="panel-settings" tabindex="0">Settings</button>
+        <button class="tab" id="tab-learning" type="button" role="tab" aria-selected="false" aria-controls="panel-learning" tabindex="-1">System learning</button>
+        <button class="tab" id="tab-log" type="button" role="tab" aria-selected="false" aria-controls="panel-log" tabindex="-1">System log</button>
+      </div>
+
+      <div class="tab-panel" id="panel-learning" role="tabpanel" aria-labelledby="tab-learning" tabindex="0" hidden>
+        <div class="tabs subtabs" role="tablist" aria-label="System learning options">
+          <button class="tab" id="tab-learned" type="button" role="tab" aria-selected="true" aria-controls="panel-learned" tabindex="0">What the system has learned</button>
+          <button class="tab" id="tab-assumptions" type="button" role="tab" aria-selected="false" aria-controls="panel-assumptions" tabindex="-1">What this simulation assumes</button>
+        </div>
+        <section class="tab-panel" id="panel-learned" role="tabpanel" aria-labelledby="tab-learned" tabindex="0">
+          <p class="cap">Each score is the system's estimate of the chance that a deterrent turns that animal back. The small figures are turn-backs over uses. In fixed mode scores stay at the starting 50%.</p>
+          <div class="tw"><table id="tbl"></table></div>
+        </section>
+        <section class="tab-panel" id="panel-assumptions" role="tabpanel" aria-labelledby="tab-assumptions" tabindex="0" hidden>
+          <ul>
+            <li>Animal reactions use made-up probabilities. A detected group is simulated as one event, and its members are shown together for illustration. After a failed Level 2 deterrent, there is a 25% chance the group will pause for 30–90 real minutes; at Level 3, the pause is 30–40 real minutes. Each use of a deterrent also lowers its effect on that species for a while, which stands in for habituation. These numbers show the logic and are not measured animal behaviour.</li>
+            <li>A PIR or Doppler sensor does not measure distance. The three levels assume sensor bands, a distance method or camera size estimates, all to be confirmed with real hardware.</li>
+            <li>The pole that detects the animal first owns the event, so overlapping coverage at the corners does not fire two responses.</li>
+            <li>The electric fence is always energised. Check local wildlife and electric fence rules before building it.</li>
+          </ul>
+        </section>
+      </div>
+
+      <section class="tab-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
+        <h2>System settings</h2>
+        <div class="set">
+          <div class="field">
+            <span class="lab">Response mode</span>
+            <div class="seg" role="radiogroup" aria-label="Response mode">
+              <label><input type="radio" name="mode" value="adaptive" checked><span>Adaptive</span></label>
+              <label><input type="radio" name="mode" value="fixed"><span>Fixed</span></label>
+            </div>
+            <p class="hint" id="modeHint"></p>
+          </div>
+          <div class="field">
+            <span class="lab">Simulation speed</span>
+            <div class="seg" role="radiogroup" aria-label="Simulation speed">
+              <label><input type="radio" name="spd" value="1"><span>1×</span></label>
+              <label><input type="radio" name="spd" value="3" checked><span>3×</span></label>
+              <label><input type="radio" name="spd" value="8"><span>8×</span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="lab" for="msgLanguage">Farmer message language</label>
+            <select id="msgLanguage" class="btn">
+              <option value="en">English</option>
+              <option value="ta">தமிழ் (Tamil)</option>
+              <option value="hi">हिन्दी (Hindi)</option>
+            </select>
+          </div>
+          <div class="field checks">
+            <label><input type="checkbox" id="optAuto" checked>Repeat raids automatically</label>
+            <label><input type="checkbox" id="optHuman">Person in the field (deterrents switch off)</label>
+            <label><input type="checkbox" id="optAlertAll">Also message the farmer at Level 1</label>
+            <label><input type="checkbox" id="optSound" checked>Play synthesized Level 2 and 3 deterrent sounds</label>
+            <p class="hint" id="soundHint">Level 1 is silent. Audio starts after your first interaction with the simulation.</p>
+            <p class="reset-note"><strong>After changing simulation speed or message language, press Reset to start a fresh run with those settings.</strong></p>
+            <p class="hint">If a group pauses in Level 2 or Level 3, the farmer is alerted after 1 real hour at Level 2 or 30 real minutes at Level 3.</p>
+          </div>
+          <div class="field">
+            <div class="rng"><label for="rngL1" class="lab" style="margin:0">Level 1 distance from fence</label><output id="outL1">30 m</output>
+              <input type="range" id="rngL1" min="20" max="32" value="30"></div>
+            <div class="rng"><label for="rngL2" class="lab" style="margin:0">Level 2 distance from fence</label><output id="outL2">15 m</output>
+              <input type="range" id="rngL2" min="9" max="18" value="15"></div>
+            <p class="hint">Level 3 is the boundary band, 5 m from the fence. Distances are meant to be adjusted after field testing.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel log" id="panel-log" role="tabpanel" aria-labelledby="tab-log" tabindex="0" hidden>
+        <h2>System log</h2>
+        <ul id="log"></ul>
+      </section>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+'use strict';
+var W=720,H=560,S=5,VERIFY=5,DUR=4.5;
+var FIELD={x:185,y:180,w:350,h:200};
+var CX=FIELD.x+FIELD.w/2,CY=FIELD.y+FIELD.h/2;
+var POLES=[{id:'NW',x:FIELD.x,y:FIELD.y},{id:'NE',x:FIELD.x+FIELD.w,y:FIELD.y},{id:'SW',x:FIELD.x,y:FIELD.y+FIELD.h},{id:'SE',x:FIELD.x+FIELD.w,y:FIELD.y+FIELD.h}];
+var SP={
+  boar:{name:'Wild boar',speed:1.5,size:12,count:4,color:'#9a6b4f'},
+  monkey:{name:'Monkey',speed:1.9,size:9,count:4,color:'#b8913f'},
+  elephant:{name:'Elephant',speed:1.2,size:18,count:4,color:'#7f8a96'},
+  deer:{name:'Deer',speed:1.7,size:11,count:4,color:'#c48a5a'}
+};
+var SPK=Object.keys(SP);
+var DET=[
+  {id:'flicker',level:1,name:'Flickering lights'},
+  {id:'strobe',level:1,name:'Strobe flash'},
+  {id:'predator',level:2,name:'Predator call'},
+  {id:'cracker',level:2,name:'Cracker burst'},
+  {id:'matched',level:2,name:'Species-matched sound'},
+  {id:'siren',level:2,name:'Siren'},
+  {id:'ledsound',level:3,name:'LED strip + changing sound'},
+  {id:'combo',level:3,name:'Strobe + siren'}
+];
+var BASE={flicker:[.55,.5,.35,.6],strobe:[.6,.55,.4,.65],predator:[.6,.5,.3,.55],cracker:[.7,.75,.45,.7],
+  matched:[.65,.6,.6,.5],siren:[.5,.45,.35,.55],ledsound:[.65,.6,.5,.65],combo:[.75,.7,.55,.75]};
+var MONO='"JetBrains Mono",ui-monospace,monospace',BODY='Inter,system-ui,sans-serif';
+var RM=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var audioCtx=null;
+
+function $(id){return document.getElementById(id);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function base(id,sp){return BASE[id][SPK.indexOf(sp)];}
+function prepareAudio(){
+  var checkbox=$('optSound');
+  if(!checkbox.checked)return;
+  var AudioContextType=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextType){
+    checkbox.checked=false;checkbox.disabled=true;
+    $('soundHint').textContent='Audio is not supported by this browser.';
+    return;
+  }
+  try{
+    if(!audioCtx)audioCtx=new AudioContextType();
+    if(audioCtx.state==='suspended')audioCtx.resume().catch(function(){
+      $('soundHint').textContent='Could not start audio. Check browser sound permissions.';
+    });
+  }catch(error){
+    checkbox.checked=false;
+    $('soundHint').textContent='Could not start audio: '+error.message;
+  }
+}
+function playTone(frequency,endFrequency,duration,type,volume){
+  if(!audioCtx||audioCtx.state!=='running')return;
+  var now=audioCtx.currentTime,osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+  osc.type=type||'sine';osc.frequency.setValueAtTime(frequency,now);
+  if(endFrequency)osc.frequency.exponentialRampToValueAtTime(endFrequency,now+duration);
+  volume=Math.min((volume||.035)*8,.7);
+  gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(volume,now+.025);
+  gain.gain.setValueAtTime(volume,now+Math.max(.03,duration-.04));
+  gain.gain.exponentialRampToValueAtTime(.0001,now+duration);
+  osc.connect(gain);gain.connect(audioCtx.destination);osc.start(now);osc.stop(now+duration+.01);
+}
+function playNoise(duration,volume){
+  if(!audioCtx||audioCtx.state!=='running')return;
+  var length=Math.floor(audioCtx.sampleRate*duration),buffer=audioCtx.createBuffer(1,length,audioCtx.sampleRate),data=buffer.getChannelData(0);
+  for(var i=0;i<length;i++)data[i]=Math.random()*2-1;
+  var source=audioCtx.createBufferSource(),gain=audioCtx.createGain(),filter=audioCtx.createBiquadFilter(),now=audioCtx.currentTime;
+  source.buffer=buffer;filter.type='highpass';filter.frequency.value=900;
+  gain.gain.setValueAtTime(Math.min(volume*8,.7),now);gain.gain.exponentialRampToValueAtTime(.0001,now+duration);
+  source.connect(filter);filter.connect(gain);gain.connect(audioCtx.destination);source.start(now);
+}
+function playDeterrentSound(id){
+  if(!$('optSound').checked||!audioCtx||audioCtx.state!=='running')return;
+  var deterrent=DET.filter(function(item){return item.id===id;})[0];
+  if(!deterrent||deterrent.level<2)return;
+  if(id==='predator'||id==='matched'){playTone(id==='matched'?460:360,id==='matched'?230:170,5,'triangle',.04);}
+  else if(id==='cracker')playNoise(5,.045);
+  else if(id==='siren')playTone(480,1050,5,'sawtooth',.025);
+  else if(id==='ledsound'){playTone(520,440,5,'triangle',.03);playTone(690,560,5,'triangle',.03);}
+  else if(id==='combo'){playTone(520,980,5,'sawtooth',.022);playTone(1200,850,5,'square',.015);}
+}
+function initTabs(){
+  document.querySelectorAll('[role="tablist"]').forEach(function(list){
+    var tabs=Array.prototype.filter.call(list.children,function(item){return item.getAttribute('role')==='tab';});
+    function select(tab,focus){
+      tabs.forEach(function(item){
+        var active=item===tab;
+        item.setAttribute('aria-selected',String(active));
+        item.tabIndex=active?0:-1;
+        $(item.getAttribute('aria-controls')).hidden=!active;
+      });
+      if(focus)tab.focus();
+    }
+    list.addEventListener('click',function(e){
+      var tab=e.target.closest('[role="tab"]');
+      if(tab&&tab.parentElement===list)select(tab,false);
+    });
+    list.addEventListener('keydown',function(e){
+      var index=tabs.indexOf(e.target),next;
+      if(index<0)return;
+      if(e.key==='ArrowRight')next=(index+1)%tabs.length;
+      else if(e.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;
+      else if(e.key==='Home')next=0;
+      else if(e.key==='End')next=tabs.length-1;
+      else return;
+      e.preventDefault();select(tabs[next],true);
+    });
+  });
+}
+
+var st={mode:'adaptive',speed:3,pick:'boar',language:'en',human:false,auto:true,alertAll:false,L1:30,L2:15,L3:5,
+  animal:null,ev:null,time:0,realTime:Date.now()/1000,nextRaid:null,last:null,fenceFlash:-9,
+  scores:{},uses:{},wins:{},hab:{},stats:{raids:0,back:0,fence:0,alerts:0}};
+
+function resetLearning(){
+  DET.forEach(function(d){
+    st.scores[d.id]={};st.uses[d.id]={};st.wins[d.id]={};st.hab[d.id]={};
+    SPK.forEach(function(s){st.scores[d.id][s]=.5;st.uses[d.id][s]=0;st.wins[d.id][s]=0;st.hab[d.id][s]=1;});
+  });
+}
+
+function distM(x,y){
+  var dx=Math.max(FIELD.x-x,0,x-(FIELD.x+FIELD.w)),dy=Math.max(FIELD.y-y,0,y-(FIELD.y+FIELD.h));
+  return Math.hypot(dx,dy)/S;
+}
+function sideOf(x,y){
+  var dl=FIELD.x-x,dr=x-(FIELD.x+FIELD.w),dt=FIELD.y-y,db=y-(FIELD.y+FIELD.h),m=Math.max(dl,dr,dt,db);
+  return m===dl?'west':m===dr?'east':m===dt?'north':'south';
+}
+function levelOf(d){return d>st.L1?0:d>st.L2?1:d>st.L3?2:3;}
+function nearestPole(x,y){
+  var best=POLES[0],bd=1e9;
+  POLES.forEach(function(p){var d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=p;}});
+  return best;
+}
+function clock(){
+  var now=new Date();
+  return [now.getHours(),now.getMinutes(),now.getSeconds()].map(function(n){return String(n).padStart(2,'0');}).join(':');
+}
+
+function log(text){
+  var el=$('log'),li=document.createElement('li'),t=document.createElement('time'),sp=document.createElement('span');
+  t.textContent=clock();sp.textContent=text;li.append(t,sp);el.prepend(li);
+  while(el.children.length>60)el.lastChild.remove();
+}
+var FARMER_TERMS={
+  en:{species:{boar:'Wild boar',monkey:'Monkey',elephant:'Elephant',deer:'Deer'},sides:{north:'north',south:'south',east:'east',west:'west'},
+    deterrents:{flicker:'Flickering lights',strobe:'Strobe flash',predator:'Predator call',cracker:'Cracker burst',matched:'Species-matched sound',siren:'Siren',ledsound:'LED strip + changing sound',combo:'Strobe + siren'}},
+  ta:{species:{boar:'காட்டுப்பன்றி',monkey:'குரங்கு',elephant:'யானை',deer:'மான்'},sides:{north:'வடக்கு',south:'தெற்கு',east:'கிழக்கு',west:'மேற்கு'},
+    deterrents:{flicker:'மினுமினுக்கும் விளக்குகள்',strobe:'ஸ்ட்ரோப் ஒளி',predator:'வேட்டையாடும் விலங்கு ஒலி',cracker:'வெடிச்சத்தம்',matched:'இனத்திற்கேற்ற ஒலி',siren:'சைரன்',ledsound:'LED விளக்கு மற்றும் மாறும் ஒலி',combo:'ஸ்ட்ரோப் மற்றும் சைரன்'}},
+  hi:{species:{boar:'जंगली सूअर',monkey:'बंदर',elephant:'हाथी',deer:'हिरण'},sides:{north:'उत्तर',south:'दक्षिण',east:'पूर्व',west:'पश्चिम'},
+    deterrents:{flicker:'झिलमिलाती लाइटें',strobe:'स्ट्रोब फ्लैश',predator:'शिकारी की आवाज़',cracker:'पटाखे की आवाज़',matched:'प्रजाति के अनुकूल आवाज़',siren:'सायरन',ledsound:'LED पट्टी और बदलती आवाज़',combo:'स्ट्रोब और सायरन'}}
+};
+function farmerMessage(type,data){
+  var lang=st.language,terms=FARMER_TERMS[lang],animal=terms.species[data.sp],side=terms.sides[data.side];
+  animal=lang==='ta'?animal+' விலங்குகளின் கூட்டம்':lang==='hi'?animal+' का झुंड':'group of '+animal;
+  if(type==='response'){
+    var deterrent=terms.deterrents[data.deterrent];
+    if(lang==='ta'){
+      if(data.held)return 'நிலை '+data.level+': '+animal+' '+side+' வேலியிலிருந்து '+data.distance+' மீட்டர் தொலைவில் உள்ளது. வயலில் ஒருவர் இருப்பதால் தடுப்பு நடவடிக்கைகள் நிறுத்தப்பட்டுள்ளன.';
+      return data.previous
+        ?'நிலை '+data.level+': '+side+' வேலியிலிருந்து '+data.distance+' மீட்டர் தொலைவில் உள்ள '+animal+', நிலை '+data.previous+' பதிலுக்குப் பிறகும் பின்வாங்கவில்லை. '+deterrent+' தொடங்கப்பட்டது.'
+        :'நிலை '+data.level+': '+animal+', '+side+' வேலியிலிருந்து '+data.distance+' மீட்டர் தொலைவில் கண்டறியப்பட்டது. '+deterrent+' தொடங்கப்பட்டது.';
+    }
+    if(lang==='hi'){
+      if(data.held)return 'स्तर '+data.level+': '+animal+' '+side+' की बाड़ से '+data.distance+' मीटर दूर है। खेत में व्यक्ति होने के कारण रोकथाम उपकरण बंद हैं।';
+      return data.previous
+        ?'स्तर '+data.level+': '+animal+' स्तर '+data.previous+' की कार्रवाई के बाद भी पीछे नहीं हटा और '+side+' की बाड़ से '+data.distance+' मीटर दूर है। '+deterrent+' शुरू किया गया।'
+        :'स्तर '+data.level+': '+animal+' '+side+' की बाड़ से '+data.distance+' मीटर दूर पाया गया। '+deterrent+' शुरू किया गया।';
+    }
+    if(data.held)return 'Level '+data.level+': '+animal+' is '+data.distance+' m from the '+side+' fence. Deterrents are held because a person is in the field.';
+    return data.previous
+      ?'Level '+data.level+': '+animal+' did not retreat after the Level '+data.previous+' response and is '+data.distance+' m from the '+side+' fence. '+deterrent+' started.'
+      :'Level '+data.level+': '+animal+' detected '+data.distance+' m from the '+side+' fence. '+deterrent+' started.';
+  }
+  if(type==='dwell'){
+    if(lang==='ta')return 'எச்சரிக்கை: '+animal+' நிலை '+data.level+' பகுதியில் '+data.duration+' நிமிடங்களாக நிற்கிறது. வயலைச் சரிபார்க்கவும்.';
+    if(lang==='hi')return 'चेतावनी: '+animal+' स्तर '+data.level+' में '+data.duration+' मिनट से रुका हुआ है। कृपया खेत की जाँच करें।';
+    return 'Alert: '+animal+' has remained in Level '+data.level+' for '+data.duration+' minutes. Please check the field.';
+  }
+  if(type==='fence'){
+    if(lang==='ta')return 'அவசரம்: '+animal+' '+side+' வேலியை அடைந்தது. தடுப்பு நடவடிக்கைகள் அதைத் திருப்பவில்லை.';
+    if(lang==='hi')return 'तत्काल: '+animal+' '+side+' की बाड़ तक पहुँच गया। रोकथाम उपकरण उसे वापस नहीं मोड़ पाए।';
+    return 'Urgent: '+animal+' reached the '+side+' fence. The deterrents did not turn it back.';
+  }
+  if(type==='left'){
+    if(lang==='ta')return animal+' '+side+' பக்கமாக வெளியேறியது. நடவடிக்கை தேவையில்லை.';
+    if(lang==='hi')return animal+' '+side+' दिशा से चला गया। कोई कार्रवाई आवश्यक नहीं है।';
+    return animal+' left the '+side+' side. No action needed.';
+  }
+  return '';
+}
+function push(kind,type,data){
+  st.stats.alerts++;
+  var li=document.createElement('li'),h=document.createElement('div'),b=document.createElement('b'),t=document.createElement('time'),p=document.createElement('p');
+  li.className='msg '+kind;h.className='mh';
+  b.textContent={info:{en:'Info',ta:'தகவல்',hi:'जानकारी'},warn:{en:'Warning',ta:'எச்சரிக்கை',hi:'चेतावनी'},urgent:{en:'Urgent',ta:'அவசரம்',hi:'तत्काल'}}[kind][st.language];
+  t.textContent=clock();h.append(b,t);p.textContent=farmerMessage(type,data);li.append(h,p);
+  $('phoneEmpty').hidden=true;
+  var list=$('phone');list.prepend(li);
+  while(list.children.length>6)list.lastChild.remove();
+  updateStats();
+}
+
+function startEvent(){
+  var a=st.animal;
+  st.ev={pole:nearestPole(a.x,a.y),level:0,pending:null,tried:{},fired:{},pushed:false,held:false,fence:false,
+    dwellLevel:0,dwellStarted:st.realTime,dwellAlerts:{}};
+  log('Motion at pole '+st.ev.pole.id+' (PIR and radar). Camera confirms: '+SP[a.sp].name+'.');
+}
+function chooseDet(lvl){
+  var ev=st.ev,sp=st.animal.sp;
+  var pool=DET.filter(function(d){return d.level===lvl;});
+  if(st.mode==='fixed')return pool[0];
+  var untried=pool.filter(function(d){return !ev.tried[d.id];});
+  var cand=untried.length?untried:pool;
+  if(Math.random()<.2)return cand[Math.floor(Math.random()*cand.length)];
+  return cand.reduce(function(b,d){return st.scores[d.id][sp]>st.scores[b.id][sp]?d:b;},cand[0]);
+}
+function fire(det,lvl){
+  var a=st.animal,ev=st.ev,sp=a.sp;
+  var p=clamp(base(det.id,sp)*st.hab[det.id][sp],.03,.95);
+  playDeterrentSound(det.id);
+  ev.pending={det:det,sp:sp,t:0,scared:Math.random()<p,reacted:false,level:lvl};
+  ev.fired[lvl]=true;ev.tried[det.id]=true;
+  st.uses[det.id][sp]++;
+  st.hab[det.id][sp]=Math.max(.12,st.hab[det.id][sp]*.8);
+  log('Level '+lvl+': '+det.name+' from pole '+ev.pole.id+'.');
+}
+function handleLevel(lvl,retry){
+  var a=st.animal,ev=st.ev,name=SP[a.sp].name,d=distM(a.x,a.y),side=sideOf(a.x,a.y);
+  var after=ev.fired[lvl-1];
+  var kind=lvl===3?'urgent':lvl===2?'warn':'info';
+  if(st.human){
+    ev.held=true;
+    if(!retry){
+      log('Level '+lvl+': person in the field, deterrents held.');
+      if(lvl>=2||st.alertAll){ev.pushed=true;push(kind,'response',{level:lvl,sp:a.sp,distance:Math.round(d),side:side,held:true});}
+    }
+    return;
+  }
+  ev.held=false;
+  var det=chooseDet(lvl);fire(det,lvl);
+  if(!retry&&(lvl>=2||st.alertAll)){
+    ev.pushed=true;
+    push(kind,'response',{level:lvl,sp:a.sp,distance:Math.round(d),side:side,previous:after?lvl-1:0,deterrent:det.id});
+  }
+}
+function resolve(ok,why){
+  var ev=st.ev,p=ev&&ev.pending;
+  if(!p)return;
+  ev.pending=null;
+  var id=p.det.id,sp=p.sp;
+  if(ok)st.wins[id][sp]++;
+  if(st.mode==='adaptive')st.scores[id][sp]+=.25*((ok?1:0)-st.scores[id][sp]);
+  st.last={id:id,sp:sp};
+  log(ok?'Camera check: animal retreated after '+p.det.name+'.'
+    :'Camera check: no retreat after '+p.det.name+(why?' ('+why+')':'')+'.');
+  renderTable();
+}
+function fenceContact(){
+  var a=st.animal;
+  if(!st.ev)startEvent();
+  var ev=st.ev;
+  resolve(false,'animal reached the fence');
+  ev.fence=true;st.fenceFlash=st.time;a.state='retreating';
+  log('Animal touched the energised fence and was repelled.');
+  ev.pushed=true;
+  push('urgent','fence',{sp:a.sp,side:sideOf(a.x,a.y)});
+}
+function cancelEvent(){if(st.ev&&st.ev.pending)st.ev.pending=null;st.ev=null;}
+function endEvent(){
+  var ev=st.ev,a=st.animal;
+  if(ev){
+    if(ev.pending)resolve(ev.pending.scared&&!ev.fence);
+    st.stats.raids++;
+    if(ev.fence)st.stats.fence++;else st.stats.back++;
+    log(ev.fence?'Raid ended: animal reached the fence and was repelled.':'Raid ended: animal turned back before the fence.');
+    if(ev.pushed&&!ev.fence)push('info','left',{sp:a.sp,side:sideOf(a.x,a.y)});
+  }
+  st.ev=null;st.animal=null;
+  if(st.auto)st.nextRaid=st.time+3;
+  updateStats();
+}
+
+function pickSp(){return st.pick==='mixed'?SPK[Math.floor(Math.random()*SPK.length)]:st.pick;}
+function pushOut(a){
+  if(distM(a.x,a.y)>0)return;
+  var l=a.x-FIELD.x,r=FIELD.x+FIELD.w-a.x,t=a.y-FIELD.y,b=FIELD.y+FIELD.h-a.y,m=Math.min(l,r,t,b),o=3*S;
+  if(m===l)a.x=FIELD.x-o;else if(m===r)a.x=FIELD.x+FIELD.w+o;else if(m===t)a.y=FIELD.y-o;else a.y=FIELD.y+FIELD.h+o;
+}
+function place(x,y){
+  cancelEvent();
+  var a={x:x,y:y,sp:pickSp(),state:'approaching',dragging:false,heading:0};
+  pushOut(a);a.heading=Math.atan2(CY-a.y,CX-a.x);st.animal=a;st.nextRaid=null;
+}
+function sendRandom(){
+  var dist=Math.min(st.L1+4,35)*S,side=Math.floor(Math.random()*4);
+  var rx=FIELD.x+FIELD.w*(.12+Math.random()*.76),ry=FIELD.y+FIELD.h*(.12+Math.random()*.76),x,y;
+  if(side===0){x=rx;y=FIELD.y-dist;}else if(side===1){x=FIELD.x+FIELD.w+dist;y=ry;}
+  else if(side===2){x=rx;y=FIELD.y+FIELD.h+dist;}else{x=FIELD.x-dist;y=ry;}
+  place(clamp(x,6,W-6),clamp(y,6,H-6));
+}
+
+function tick(dt){
+  st.time+=dt;
+  st.realTime=Date.now()/1000;
+  DET.forEach(function(d){SPK.forEach(function(s){st.hab[d.id][s]=Math.min(1,st.hab[d.id][s]+.0015*dt);});});
+  var a=st.animal;
+  if(!a){
+    if(st.auto&&st.nextRaid!==null&&st.time>=st.nextRaid){st.nextRaid=null;sendRandom();}
+    return;
+  }
+  if(a.dragging)return;
+  var sp=SP[a.sp],d=distM(a.x,a.y),vx,vy,len;
+  var stationary=Boolean(a.lingerUntil&&st.realTime<a.lingerUntil);
+  if(a.state==='approaching'){
+    if(a.lingerUntil){
+      if(st.realTime<a.lingerUntil)a.heading=Math.atan2(CY-a.y,CX-a.x);
+      else{a.lingerUntil=null;log('Animal resumed moving after lingering in the response zone.');}
+    }else{
+      vx=CX-a.x;vy=CY-a.y;len=Math.hypot(vx,vy)||1;
+      var step=sp.speed*dt*S;
+      a.x+=vx/len*step;a.y+=vy/len*step;a.heading=Math.atan2(vy,vx);
+      d=distM(a.x,a.y);
+      if(d<=.4)fenceContact();
+    }
+  }else{
+    vx=a.x-CX;vy=a.y-CY;len=Math.hypot(vx,vy)||1;
+    var rs=sp.speed*1.7*dt*S;
+    a.x+=vx/len*rs;a.y+=vy/len*rs;a.heading=Math.atan2(vy,vx);
+    d=distM(a.x,a.y);
+    if(d>st.L1+5||a.x<2||a.x>W-2||a.y<2||a.y>H-2){endEvent();return;}
+  }
+  var lvl=levelOf(d);
+  if(a.state==='approaching'){
+    if(!st.ev&&lvl>=1)startEvent();
+    var e0=st.ev;
+    if(e0&&lvl>e0.level){
+      resolve(false,'animal advanced');e0.level=lvl;e0.tried={};
+      handleLevel(lvl,false);
+    }
+  }
+  var ev=st.ev;
+  if(ev){
+    if(a.state==='approaching'&&lvl>=2&&stationary){
+      if(ev.dwellLevel!==lvl){ev.dwellLevel=lvl;ev.dwellStarted=st.realTime;}
+      var dwellTime=st.realTime-ev.dwellStarted;
+      var dwellLimit=lvl===3?30*60:60*60,dwellMinutes=lvl===3?30:60;
+      if(dwellTime>=dwellLimit&&!ev.dwellAlerts[lvl]){
+        ev.dwellAlerts[lvl]=true;
+        log('Level '+lvl+' linger alert sent to the farmer.');
+        push(lvl===3?'urgent':'warn','dwell',{sp:a.sp,level:lvl,duration:dwellMinutes});
+      }
+    }else{
+      ev.dwellLevel=0;ev.dwellStarted=st.realTime;
+    }
+    if(st.human&&ev.pending){ev.pending=null;ev.held=true;log('Person detected: deterrent stopped.');}
+    if(!st.human&&ev.held&&!ev.pending&&a.state==='approaching'&&ev.level>0)handleLevel(ev.level,true);
+    var p=ev.pending;
+    if(p){
+      p.t+=dt;
+      if(!p.reacted&&p.t>=1){p.reacted=true;if(p.scared&&a.state==='approaching')a.state='retreating';}
+      if(p.t>=VERIFY){
+        var ok=a.state==='retreating';
+        resolve(ok);
+        if(!ok&&a.state==='approaching'){
+          if(ev.level>=2&&!a.lingerUntil&&Math.random()<.25){
+            a.lingerUntil=st.realTime+(ev.level===3?30*60:30*60+Math.random()*60*60);
+            log('Animal is lingering in Level '+ev.level+' after the deterrent failed.');
+          }
+          handleLevel(ev.level,true);
+        }
+      }
+    }
+  }
+}
+
+/* ---------- drawing ---------- */
+var cv=$('cv'),ctx=cv.getContext('2d'),C={};
+function readColors(){
+  var cs=getComputedStyle(document.documentElement);
+  ['ground','z1','z2','z3','crop','crop-line','fence','pole','fg','muted','accent','warn','danger','line'].forEach(function(k){
+    C[k.replace(/-(\w)/g,function(m,c){return c.toUpperCase();})]=cs.getPropertyValue('--'+k).trim();
+  });
+}
+function fit(){
+  var dpr=Math.min(window.devicePixelRatio||1,2);
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function rr(x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+function band(m){var o=m*S;rr(FIELD.x-o,FIELD.y-o,FIELD.w+2*o,FIELD.h+2*o,o);}
+function halo(text,x,y){
+  ctx.lineWidth=3;ctx.strokeStyle=C.ground;ctx.lineJoin='round';ctx.strokeText(text,x,y);
+  ctx.fillStyle=C.fg;ctx.fillText(text,x,y);
+}
+function dot(x,y){ctx.beginPath();ctx.arc(x,y,2.2,0,7);ctx.fill();}
+
+function strip(a,fx){
+  var F=FIELD,sd=sideOf(a.x,a.y);
+  var seg={north:[F.x,F.y,F.x+F.w,F.y],south:[F.x,F.y+F.h,F.x+F.w,F.y+F.h],west:[F.x,F.y,F.x,F.y+F.h],east:[F.x+F.w,F.y,F.x+F.w,F.y+F.h]}[sd];
+  ctx.globalAlpha=.95;ctx.strokeStyle=C.accent;ctx.lineWidth=6;ctx.setLineDash([10,8]);ctx.lineDashOffset=-fx*60;
+  ctx.beginPath();ctx.moveTo(seg[0],seg[1]);ctx.lineTo(seg[2],seg[3]);ctx.stroke();ctx.setLineDash([]);ctx.lineDashOffset=0;
+}
+function effects(fx){
+  var ev=st.ev,a=st.animal;
+  if(!ev||!a)return;
+  var pl=ev.pole,i,r;
+  ctx.save();
+  for(i=0;i<2;i++){r=((fx*22+i*20)%40)+8;ctx.globalAlpha=1-(r-8)/40;ctx.strokeStyle=C.accent;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(pl.x,pl.y,r,0,7);ctx.stroke();}
+  ctx.globalAlpha=.5;ctx.setLineDash([4,5]);ctx.strokeStyle=C.accent;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pl.x,pl.y);ctx.lineTo(a.x,a.y);ctx.stroke();ctx.setLineDash([]);
+  var p=ev.pending;
+  if(p&&p.t<DUR){
+    var k=p.det.id,ang=Math.atan2(a.y-pl.y,a.x-pl.x);
+    var flash=function(rad,al){ctx.globalAlpha=al;ctx.fillStyle=C.warn;ctx.beginPath();ctx.arc(pl.x,pl.y,rad,0,7);ctx.fill();};
+    var arcs=function(col,speed){
+      for(var j=0;j<3;j++){var rd=(fx*speed+j*38)%114+10;ctx.globalAlpha=1-(rd-10)/114;ctx.strokeStyle=col;ctx.lineWidth=2.5;
+        ctx.beginPath();ctx.arc(pl.x,pl.y,rd,ang-.75,ang+.75);ctx.stroke();}
+    };
+    if(k==='flicker'){if(RM||Math.sin(fx*6.5)+Math.sin(fx*9.1)>.2)flash(RM?38:52,RM?.35:.5);}
+    else if(k==='strobe'){if(RM||(fx*2.5)%1<.3){flash(86,RM?.3:.5);flash(24,.8);}}
+    else if(k==='cracker'){if(RM||(fx*2)%1<.2)flash(70,.55);arcs(C.warn,150);}
+    else if(k==='predator'||k==='matched'){arcs(C.accent,70);}
+    else if(k==='siren'){arcs(C.danger,110);}
+    else if(k==='ledsound'){strip(a,fx);arcs(C.accent,80);}
+    else if(k==='combo'){if(RM||(fx*2.5)%1<.3)flash(80,.5);arcs(C.danger,110);}
+    ctx.globalAlpha=1;ctx.font='500 11px '+BODY;
+    ctx.textAlign=pl.x<CX?'left':'right';
+    halo(p.det.name,pl.x+(pl.x<CX?16:-16),pl.y+(pl.y<CY?-26:34));
+  }
+  ctx.restore();
+}
+function drawCreature(species,x,y,heading,size,color){
+  var z=size;
+  ctx.save();ctx.translate(x,y);ctx.rotate(heading||0);
+  ctx.fillStyle=color;ctx.strokeStyle=C.fg;ctx.lineWidth=Math.max(1,size*.11);ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.beginPath();ctx.ellipse(-z*.12,0,z,z*.58,0,0,7);ctx.fill();ctx.stroke();
+  if(species==='boar'){
+    ctx.beginPath();ctx.ellipse(z*.72,-z*.16,z*.34,z*.3,-.15,0,7);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.ellipse(z*1.05,-z*.1,z*.22,z*.16,0,0,7);ctx.fillStyle='#594237';ctx.fill();
+    ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(z*.57,-z*.38);ctx.lineTo(z*.55,-z*.76);ctx.lineTo(z*.88,-z*.43);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(z*.69,z*.05);ctx.quadraticCurveTo(z*.84,z*.02,z*.78,-z*.22);
+    ctx.moveTo(z*.83,z*.02);ctx.quadraticCurveTo(z*.98,z*.08,z*.93,-z*.16);ctx.strokeStyle='#f0e2c7';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-z*.6,z*.36);ctx.lineTo(-z*.55,z*.66);ctx.moveTo(-z*.05,z*.42);ctx.lineTo(-z*.02,z*.7);
+    ctx.moveTo(z*.42,z*.35);ctx.lineTo(z*.38,z*.65);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-z,z*.04);ctx.quadraticCurveTo(-z*1.4,z*.05,-z*1.2,-z*.22);ctx.stroke();
+  }else if(species==='monkey'){
+    ctx.beginPath();ctx.arc(z*.7,-z*.22,z*.32,0,7);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(z*.77,-z*.28,z*.07,0,7);ctx.fillStyle='#f3c9a0';ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-z*.38,z*.4);ctx.lineTo(-z*.55,z*.88);ctx.lineTo(-z*.22,z*.94);
+    ctx.moveTo(z*.15,z*.42);ctx.lineTo(z*.05,z*.9);ctx.lineTo(z*.35,z*.95);
+    ctx.moveTo(z*.52,z*.2);ctx.lineTo(z*.8,z*.56);ctx.moveTo(-z*.2,z*.2);ctx.lineTo(-z*.45,z*.58);
+    ctx.moveTo(-z*.9,-z*.05);ctx.bezierCurveTo(-z*1.8,-z*.1,-z*1.8,z*.95,-z*1.15,z*.75);
+    ctx.strokeStyle=C.fg;ctx.stroke();
+  }else if(species==='elephant'){
+    ctx.beginPath();ctx.ellipse(z*.58,-z*.32,z*.3,z*.43,-.25,0,7);ctx.fillStyle='#697681';ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(z*.8,-z*.18,z*.25,0,7);ctx.fillStyle=color;ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(z*.94,-z*.08);ctx.bezierCurveTo(z*1.55,z*.05,z*1.15,z*.68,z*1.48,z*.7);
+    ctx.moveTo(z*.95,z*.02);ctx.quadraticCurveTo(z*1.16,z*.17,z*1.2,z*.27);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(z*.62,z*.05);ctx.quadraticCurveTo(z*.81,z*.09,z*.8,z*.34);ctx.strokeStyle='#f3e7d2';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-z*.55,z*.4);ctx.lineTo(-z*.52,z*.68);ctx.moveTo(-z*.06,z*.48);ctx.lineTo(-z*.04,z*.72);
+    ctx.moveTo(z*.38,z*.44);ctx.lineTo(z*.37,z*.72);ctx.strokeStyle=C.fg;ctx.stroke();
+  }else{
+    ctx.beginPath();ctx.moveTo(z*.55,-z*.18);ctx.lineTo(z*.82,-z*.57);ctx.lineTo(z*1.05,-z*.53);ctx.lineTo(z*.95,-z*.22);
+    ctx.fillStyle=color;ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(z*.78,-z*.48);ctx.lineTo(z*.66,-z*.88);ctx.lineTo(z*.54,-z*.96);
+    ctx.moveTo(z*.72,-z*.64);ctx.lineTo(z*.94,-z*.84);ctx.lineTo(z*1.04,-z*.87);
+    ctx.moveTo(z*.67,-z*.71);ctx.lineTo(z*.48,-z*.8);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-z*.6,z*.35);ctx.lineTo(-z*.66,z*.94);ctx.moveTo(-z*.18,z*.48);ctx.lineTo(-z*.15,z*.96);
+    ctx.moveTo(z*.32,z*.4);ctx.lineTo(z*.38,z*.94);ctx.moveTo(z*.58,z*.3);ctx.lineTo(z*.66,z*.83);
+    ctx.moveTo(-z*.98,-z*.06);ctx.lineTo(-z*1.2,-z*.27);ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawAnimal(){
+  var a=st.animal;
+  if(!a)return;
+  var s=SP[a.sp],z=s.size,heading=a.heading||0,dx=Math.cos(heading),dy=Math.sin(heading),count=s.count;
+  for(var i=count-1;i>=0;i--){
+    var row=Math.ceil(i/2),side=i%2===0?1:-1,spacing=z*1.65;
+    var x=a.x-dx*row*spacing-dy*side*row*z*1.15;
+    var y=a.y-dy*row*spacing+dx*side*row*z*1.15;
+    drawCreature(a.sp,x,y,heading,z*(i===0?1:.76),i===0?s.color:'#806f5d');
+  }
+  var d=distM(a.x,a.y);
+  ctx.font='500 11px '+BODY;ctx.textAlign='center';
+  halo(s.name+' group · '+count+' · '+Math.round(d)+' m'+(a.state==='retreating'?' · retreating':a.lingerUntil&&a.state==='approaching'?' · lingering':''),a.x,a.y+z+18);
+}
+function draw(){
+  var fx=performance.now()/1000,F=FIELD;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=C.ground;ctx.fillRect(0,0,W,H);
+  [[st.L1,C.z1],[st.L2,C.z2],[st.L3,C.z3]].forEach(function(b){
+    band(b[0]);ctx.fillStyle=b[1];ctx.fill();
+    ctx.setLineDash([5,5]);ctx.strokeStyle=C.line;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
+  });
+  ctx.fillStyle=C.crop;ctx.fillRect(F.x,F.y,F.w,F.h);
+  ctx.strokeStyle=C.cropLine;ctx.lineWidth=1;ctx.beginPath();
+  for(var y=F.y+12;y<F.y+F.h;y+=12){ctx.moveTo(F.x+3,y);ctx.lineTo(F.x+F.w-3,y);}
+  ctx.stroke();
+  ctx.font='500 11px '+MONO;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle=C.muted;
+  ctx.fillText('LEVEL 1 · '+st.L1+' m',CX,F.y-st.L1*S+16);
+  ctx.fillText('LEVEL 2 · '+st.L2+' m',CX,F.y-st.L2*S+16);
+  ctx.fillText('LEVEL 3 · '+st.L3+' m',CX,F.y-st.L3*S+16);
+  ctx.font='500 12px '+BODY;ctx.fillStyle=C.fg;ctx.globalAlpha=.7;
+  ctx.fillText('Sugarcane field · 70 × 40 m',CX,CY+4);ctx.globalAlpha=1;
+  var pulse=.55+.45*Math.sin(fx*2.2);
+  ctx.save();ctx.shadowColor=C.fence;ctx.shadowBlur=RM?4:6+6*pulse;ctx.strokeStyle=C.fence;ctx.lineWidth=2.5;
+  ctx.strokeRect(F.x,F.y,F.w,F.h);ctx.restore();
+  if(st.time-st.fenceFlash<.8){ctx.save();ctx.globalAlpha=1-(st.time-st.fenceFlash)/.8;ctx.strokeStyle=C.danger;ctx.lineWidth=6;ctx.strokeRect(F.x,F.y,F.w,F.h);ctx.restore();}
+  ctx.fillStyle=C.fg;
+  var x;
+  for(x=F.x;x<=F.x+F.w;x+=35){dot(x,F.y);dot(x,F.y+F.h);}
+  for(y=F.y+40;y<F.y+F.h;y+=40){dot(F.x,y);dot(F.x+F.w,y);}
+  if(st.human){
+    var px=F.x+70,py=F.y+F.h-52;
+    ctx.strokeStyle=C.fg;ctx.fillStyle=C.fg;ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(px,py-14,5,0,7);ctx.fill();
+    ctx.beginPath();ctx.moveTo(px,py-8);ctx.lineTo(px,py+8);ctx.moveTo(px-8,py-3);ctx.lineTo(px+8,py-3);ctx.moveTo(px,py+8);ctx.lineTo(px-6,py+20);ctx.moveTo(px,py+8);ctx.lineTo(px+6,py+20);ctx.stroke();
+    ctx.font='500 11px '+BODY;ctx.textAlign='center';halo('Person',px,py+34);
+  }
+  effects(fx);
+  POLES.forEach(function(p){
+    var own=st.ev&&st.ev.pole===p;
+    ctx.fillStyle=C.pole;ctx.strokeStyle=C.ground;ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,7,0,7);ctx.fill();ctx.stroke();
+    if(own){ctx.strokeStyle=C.accent;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(p.x,p.y,12,0,7);ctx.stroke();}
+    ctx.font='600 11px '+MONO;ctx.textAlign=p.x<CX?'right':'left';
+    halo(p.id,p.x+(p.x<CX?-14:14),p.y+(p.y<CY?-10:18));
+  });
+  drawAnimal();
+  if(!st.animal){ctx.font='500 12px '+BODY;ctx.textAlign='center';ctx.fillStyle=C.muted;ctx.fillText('Click the map to place an animal',W/2,H-14);}
+}
+
+/* ---------- UI ---------- */
+function updateStats(){
+  var s=st.stats;
+  $('sRaids').textContent=s.raids;$('sBack').textContent=s.back;$('sFence').textContent=s.fence;$('sAlerts').textContent=s.alerts;
+  $('sRate').textContent=s.raids?Math.round(100*s.back/s.raids)+'%':'—';
+}
+function updateStatus(){
+  var a=st.animal,ev=st.ev,d=a?distM(a.x,a.y):0,lvl=a?levelOf(d):0;
+  $('stAnimal').textContent=a?SP[a.sp].name+' group ('+SP[a.sp].count+')'+(a.state==='retreating'?' (retreating)':''):'None in range';
+  $('stDist').textContent=a?(d<=.4?'At fence':Math.round(d)+' m'):'—';
+  $('stPole').textContent=ev?'Pole '+ev.pole.id:'—';
+  var resp='Watching';
+  if(a&&lvl>0){resp=st.human?'Held, person in field':(a.lingerUntil&&a.state==='approaching'?'Lingering in Level '+lvl:(ev&&ev.pending)?ev.pending.det.name:'Standing by');}
+  $('stResp').textContent=resp;
+  $('stCheck').textContent=(ev&&ev.pending)?'Checking retreat, '+Math.max(0,Math.ceil(VERIFY-ev.pending.t))+' s':'—';
+  document.querySelectorAll('.lvl').forEach(function(el){el.classList.toggle('on',Boolean(a)&&Number(el.dataset.l)===lvl);});
+}
+function buildTable(){
+  var grp={1:'Level 1 · lights',2:'Level 2 · sound',3:'Level 3 · boundary'},cur=0;
+  var h='<thead><tr><th scope="col">Deterrent</th>'+SPK.map(function(s){return '<th scope="col">'+SP[s].name+'</th>';}).join('')+'</tr></thead><tbody>';
+  DET.forEach(function(d){
+    if(d.level!==cur){cur=d.level;h+='<tr class="grp"><th colspan="5">'+grp[cur]+'</th></tr>';}
+    h+='<tr><th scope="row">'+d.name+'</th>'+SPK.map(function(s){return '<td class="cell" id="c-'+d.id+'-'+s+'"></td>';}).join('')+'</tr>';
+  });
+  $('tbl').innerHTML=h+'</tbody>';
+}
+function renderTable(){
+  DET.forEach(function(d){SPK.forEach(function(s){
+    var el=$('c-'+d.id+'-'+s),v=Math.round(st.scores[d.id][s]*100);
+    el.style.setProperty('--p',v);
+    el.innerHTML='<b>'+v+'%</b><small>'+st.wins[d.id][s]+'/'+st.uses[d.id][s]+'</small>';
+    el.classList.toggle('last',Boolean(st.last)&&st.last.id===d.id&&st.last.sp===s);
+  });});
+}
+var HINT={
+  adaptive:'Picks from each level’s pool by score, tries a different deterrent after a failure, and keeps learning.',
+  fixed:'Always uses the first deterrent at each level and never learns. Run several raids and compare the turn-back rate with adaptive mode.'
+};
+function resetAll(){
+  cancelEvent();st.animal=null;st.nextRaid=null;st.last=null;
+  st.stats={raids:0,back:0,fence:0,alerts:0};resetLearning();
+  $('log').innerHTML='';$('phone').innerHTML='';$('phoneEmpty').hidden=false;
+  log('System armed: 4 poles online, fence energised.');
+  renderTable();updateStats();
+  if(st.auto)sendRandom();
+}
+
+function pt(e){
+  var r=cv.getBoundingClientRect();
+  return {x:clamp((e.clientX-r.left)*W/r.width,6,W-6),y:clamp((e.clientY-r.top)*H/r.height,6,H-6)};
+}
+cv.addEventListener('pointerdown',function(e){
+  var p=pt(e),a=st.animal;
+  if(a&&Math.hypot(a.x-p.x,a.y-p.y)<SP[a.sp].size+14){a.dragging=true;try{cv.setPointerCapture(e.pointerId);}catch(x){}return;}
+  place(p.x,p.y);
+});
+document.addEventListener('pointerdown',prepareAudio);
+document.addEventListener('keydown',prepareAudio);
+cv.addEventListener('pointermove',function(e){
+  var a=st.animal;
+  if(a&&a.dragging){var p=pt(e);a.x=p.x;a.y=p.y;a.heading=Math.atan2(CY-a.y,CX-a.x);}
+});
+function drop(){
+  var a=st.animal;
+  if(a&&a.dragging){a.dragging=false;pushOut(a);cancelEvent();a.state='approaching';}
+}
+cv.addEventListener('pointerup',drop);
+cv.addEventListener('pointercancel',drop);
+
+document.querySelectorAll('input[name="sp"]').forEach(function(el){el.addEventListener('change',function(){st.pick=el.value;});});
+document.querySelectorAll('input[name="mode"]').forEach(function(el){el.addEventListener('change',function(){st.mode=el.value;$('modeHint').textContent=HINT[st.mode];});});
+document.querySelectorAll('input[name="spd"]').forEach(function(el){el.addEventListener('change',function(){st.speed=Number(el.value);});});
+$('msgLanguage').addEventListener('change',function(e){st.language=e.target.value;});
+$('optAuto').addEventListener('change',function(e){st.auto=e.target.checked;if(st.auto&&!st.animal)st.nextRaid=st.time+1;});
+$('optSound').addEventListener('change',function(e){
+  if(e.target.checked)prepareAudio();
+  else $('soundHint').textContent='Deterrent sounds are muted.';
+});
+$('optHuman').addEventListener('change',function(e){st.human=e.target.checked;});
+$('optAlertAll').addEventListener('change',function(e){st.alertAll=e.target.checked;});
+$('rngL1').addEventListener('input',function(e){
+  st.L1=Number(e.target.value);$('outL1').textContent=st.L1+' m';
+  if(st.L2>st.L1-5){st.L2=st.L1-5;$('rngL2').value=st.L2;$('outL2').textContent=st.L2+' m';}
+});
+$('rngL2').addEventListener('input',function(e){
+  st.L2=Math.min(Number(e.target.value),st.L1-5);e.target.value=st.L2;$('outL2').textContent=st.L2+' m';
+});
+$('send').addEventListener('click',sendRandom);
+$('reset').addEventListener('click',resetAll);
+window.addEventListener('resize',fit);
+new MutationObserver(readColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener('change',readColors);
+
+var last=performance.now(),acc=0;
+function frame(now){
+  var real=Math.min((now-last)/1000,.05);last=now;
+  tick(real*st.speed);draw();
+  acc+=real;if(acc>.12){acc=0;updateStatus();}
+  requestAnimationFrame(frame);
+}
+
+initTabs();resetLearning();buildTable();readColors();fit();
+$('modeHint').textContent=HINT.adaptive;
+resetAll();
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
